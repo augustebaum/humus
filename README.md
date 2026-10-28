@@ -61,17 +61,21 @@ humus --branch feature/user-repairs --dry-run
 
 ## Use with jj
 
-Point a jj alias at `jj git push` followed by humus, so every push maintains
-the comment automatically. The alias names the branch explicitly, so a bare
-`humus` still does nothing on its own:
+A small wrapper script connects `jj push` to humus: it pushes, reads the
+bookmark on the working-copy commit, and runs humus for that branch. The
+branch is named explicitly, so a bare `humus` still does nothing on its own.
+
+Point a jj alias at the wrapper:
 
 ```console
-jj config set --user aliases.push '["util", "exec", "--", "sh", "-c", "jj git push \"$@\" && branch=$(jj bookmark list -r @ -T name | head -1) && [ -n \"$branch\" ] && humus --branch \"$branch\"", "sh"]'
+jj config set --user aliases.push '["util", "exec", "--", "sh", "/path/to/humus/checkout/src/jj-humus-push"]'
 ```
 
 `jj push` then pushes as usual and updates the revision history comment for
-the pushed branch. The setup assumes the pushed change carries one bookmark,
-which is the common case; use `--pr` manually when it does not.
+the pushed branch. The wrapper skips humus when the working-copy commit has
+no bookmark, or when humus is not on PATH. It assumes the pushed change
+carries one bookmark, which is the common case; use `--pr` manually when it
+does not.
 
 ## The comment
 
