@@ -7,7 +7,7 @@ Run it after a force-push. Give it the branch or PR number; it finds the open
 pull request for that branch on GitHub, reads the PR's force-push timeline,
 renders a version table, and creates or updates one managed comment on the PR.
 Bare invocation only prints help; nothing is pushed or written without an
-explicit --pr or --branch. Uses only the standard library.
+explicit --pr or --branch.
 """
 
 from __future__ import annotations
