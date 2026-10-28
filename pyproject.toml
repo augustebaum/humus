@@ -1,0 +1,16 @@
+[project]
+name = "humus"
+version = "0.1.0"
+description = "Maintain a PR comment listing the force-pushed versions of a patch"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.scripts]
+humus = "humus.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/humus"]

@@ -1,0 +1,182 @@
+import contextlib
+import io
+import sys
+import unittest
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
+
+from humus.cli import (
+    Revision,
+    include_pushed_revision,
+    main,
+    parse_github_repo,
+    revision_history_body,
+    short_commit_id,
+    _revisions_from_timeline,
+)
+
+
+class ParseRepoTest(unittest.TestCase):
+    def test_https(self) -> None:
+        self.assertEqual(
+            parse_github_repo("https://github.com/octocat/Hello-World.git"),
+            ("octocat", "Hello-World"),
+        )
+
+    def test_ssh(self) -> None:
+        self.assertEqual(
+            parse_github_repo("git@github.com:octocat/Hello-World.git"),
+            ("octocat", "Hello-World"),
+        )
+
+    def test_no_slash_repo(self) -> None:
+        self.assertIsNone(parse_github_repo("https://github.com/octocat"))
+
+    def test_other_host(self) -> None:
+        self.assertIsNone(parse_github_repo("git@gitlab.com:octocat/Hello-World.git"))
+
+
+class RevisionsFromTimelineTest(unittest.TestCase):
+    def test_full_window_reconstruction(self) -> None:
+        payload = {
+            "timelineItems": {
+                "filteredCount": 2,
+                "nodes": [
+                    {
+                        "beforeCommit": {"oid": "a" * 40},
+                        "afterCommit": {"oid": "b" * 40},
+                    },
+                    {
+                        "beforeCommit": {"oid": "b" * 40},
+                        "afterCommit": {"oid": "c" * 40},
+                    },
+                ],
+            }
+        }
+        revisions = _revisions_from_timeline(payload)
+        self.assertEqual(len(revisions), 2)
+        self.assertEqual(revisions[0].version, 2)
+        self.assertFalse(revisions[0].is_current)
+        self.assertEqual(revisions[1].version, 3)
+        self.assertTrue(revisions[1].is_current)
+
+    def test_window_shorter_than_history(self) -> None:
+        payload = {
+            "timelineItems": {
+                "filteredCount": 42,
+                "nodes": [
+                    {"beforeCommit": {"oid": "a" * 40}, "afterCommit": {"oid": "b" * 40}},
+                    {"beforeCommit": {"oid": "b" * 40}, "afterCommit": {"oid": "c" * 40}},
+                ],
+            }
+        }
+        revisions = _revisions_from_timeline(payload)
+        self.assertEqual(revisions[0].version, 42)
+        self.assertEqual(revisions[1].version, 43)
+
+    def test_events_without_commit_are_skipped(self) -> None:
+        payload = {
+            "timelineItems": {
+                "filteredCount": 2,
+                "nodes": [
+                    {"beforeCommit": None, "afterCommit": {"oid": "b" * 40}},
+                    {"beforeCommit": {"oid": "b" * 40}, "afterCommit": {"oid": "c" * 40}},
+                ],
+            }
+        }
+        revisions = _revisions_from_timeline(payload)
+        self.assertEqual(len(revisions), 1)
+        self.assertEqual(revisions[0].version, 3)
+
+
+class IncludePushedRevisionTest(unittest.TestCase):
+    revisions = (
+        Revision(before_commit_id="a" * 40, commit_id="b" * 40, is_current=False, version=2),
+        Revision(before_commit_id="b" * 40, commit_id="c" * 40, is_current=True, version=3),
+    )
+
+    def test_no_append_when_timeline_current(self) -> None:
+        out = include_pushed_revision(self.revisions, "c" * 40)
+        self.assertEqual(out, self.revisions)
+
+    def test_append_when_branch_ahead(self) -> None:
+        out = include_pushed_revision(self.revisions, "d" * 40)
+        self.assertEqual(len(out), 3)
+        self.assertFalse(out[0].is_current)
+        self.assertFalse(out[1].is_current)
+        self.assertEqual(out[2].before_commit_id, "c" * 40)
+        self.assertEqual(out[2].commit_id, "d" * 40)
+        self.assertEqual(out[2].version, 4)
+        self.assertTrue(out[2].is_current)
+
+    def test_no_append_without_branch_target(self) -> None:
+        out = include_pushed_revision(self.revisions, None)
+        self.assertEqual(out, self.revisions)
+
+    def test_no_append_without_revisions(self) -> None:
+        self.assertEqual(include_pushed_revision((), "d" * 40), ())
+
+
+class RenderBodyTest(unittest.TestCase):
+    def test_table(self) -> None:
+        revisions = (
+            Revision(before_commit_id="a" * 40, commit_id="b" * 40, is_current=False, version=2),
+            Revision(before_commit_id="b" * 40, commit_id="c" * 40, is_current=True, version=3),
+        )
+        body = revision_history_body(revisions=revisions, repo_full_name="octocat/Hello-World")
+        self.assertIn("<!-- jj-stack-revision-history -->", body)
+        self.assertIn("| Version | Changes from previous version | Submitted commit |", body)
+        self.assertIn("| 3 (current) |", body)
+        self.assertIn(
+            f"[`{'b' * 8}..{'c' * 8}`](https://github.com/octocat/Hello-World/"
+            f"compare/{'b' * 40}..{'c' * 40})",
+            body,
+        )
+        self.assertIn(f"`{short_commit_id('c' * 40)}`", body)
+        self.assertIn("| 1 | Initial version |", body)
+        self.assertIn("Maintained by humus", body)
+
+    def test_version_cap_note(self) -> None:
+        revisions = (
+            Revision(before_commit_id="a" * 40, commit_id="b" * 40, is_current=False, version=42),
+            Revision(before_commit_id="b" * 40, commit_id="c" * 40, is_current=True, version=43),
+        )
+        body = revision_history_body(revisions=revisions, repo_full_name="octocat/Hello-World")
+        self.assertIn("Showing the 20 most recent available versions.", body)
+
+    def test_current_commit_linked(self) -> None:
+        revisions = (
+            Revision(before_commit_id="a" * 40, commit_id="b" * 40, is_current=True, version=2),
+        )
+        body = revision_history_body(revisions=revisions, repo_full_name="octocat/Hello-World")
+        self.assertIn(f"compare/{'a' * 40}..{'b' * 40}", body)
+        self.assertIn(f"commit/{'b' * 40}", body)
+
+
+class ShortCommitIdTest(unittest.TestCase):
+    def test_prefix(self) -> None:
+        self.assertEqual(short_commit_id("0123456789abcdef"), "01234567")
+
+
+class BareInvocationTest(unittest.TestCase):
+    def test_no_arguments_is_inert(self) -> None:
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            self.assertEqual(main([]), 0)
+        self.assertIn("usage: humus", buffer.getvalue())
+
+    def test_short_and_long_help_are_synonyms(self) -> None:
+        outputs = []
+        for flag in ("-h", "--help"):
+            buffer = io.StringIO()
+            with contextlib.redirect_stdout(buffer):
+                with self.assertRaises(SystemExit) as caught:
+                    main([flag])
+            self.assertEqual(caught.exception.code, 0)
+            outputs.append(buffer.getvalue())
+        self.assertEqual(outputs[0], outputs[1])
+
+
+if __name__ == "__main__":
+    unittest.main()
