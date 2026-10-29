@@ -14,6 +14,7 @@ without a target or the jj-push subcommand.
 from __future__ import annotations
 
 import argparse
+import functools
 import json
 import os
 import re
@@ -185,7 +186,7 @@ query PullRequestForBranch($owner: String!, $repo: String!, $branch: String!) {
   repository(owner: $owner, name: $repo) {
     nameWithOwner
     pullRequests(headRefName: $branch, states: OPEN, first: 10) {
-      nodes { number url headRefOid }
+      nodes { number url baseRefOid headRefOid }
     }
   }
 }
@@ -219,13 +220,15 @@ PR_BY_NUMBER_QUERY = """
 query PullRequest($owner: String!, $repo: String!, $number: Int!) {
   repository(owner: $owner, name: $repo) {
     nameWithOwner
-    pullRequest(number: $number) { number url headRefOid state }
+    pullRequest(number: $number) { number url baseRefOid headRefOid state }
   }
 }
 """
 
 
-def find_pr_by_number(*, token: str, owner: str, repo: str, number: int) -> dict[str, Any]:
+def find_pr_by_number(
+    *, token: str, owner: str, repo: str, number: int
+) -> dict[str, Any]:
     data = graphql(
         PR_BY_NUMBER_QUERY,
         {"owner": owner, "repo": repo, "number": number},
@@ -300,11 +303,21 @@ def revision_history_body(
     """Render the managed comment, newest version first."""
     revisions = revisions[-VERSION_LIMIT:]
     repo_url = f"https://github.com/{repo_full_name}"
+
+    def submitted_link(commit_id: str) -> str:
+        """Link a version to the whole PR diff, not the head commit alone."""
+        url = (
+            f"{repo_url}/compare/{base_ref_oid}..{commit_id}"
+            if base_ref_oid is not None
+            else f"{repo_url}/commit/{commit_id}"
+        )
+        return _markdown_link(short_commit_id(commit_id), url)
+
     rows = [
         MARKER,
         "## Revision history",
         "",
-        "| Version | Changes from previous version | Submitted commit |",
+        "| Version | Changes from previous version | Submitted version |",
         "| --- | --- | --- |",
     ]
     for revision in reversed(revisions):
@@ -314,18 +327,11 @@ def revision_history_body(
             f"{short_commit_id(revision.commit_id)}",
             f"{repo_url}/compare/{revision.before_commit_id}..{revision.commit_id}",
         )
-        submitted = _markdown_link(
-            short_commit_id(revision.commit_id),
-            f"{repo_url}/commit/{revision.commit_id}",
-        )
+        submitted = submitted_link(revision.commit_id)
         rows.append(f"| {version} | {changes} | {submitted} |")
     if revisions[0].version == 2 and len(revisions) < VERSION_LIMIT:
         initial_commit = revisions[0].before_commit_id
-        submitted = _markdown_link(
-            short_commit_id(initial_commit),
-            f"{repo_url}/commit/{initial_commit}",
-        )
-        rows.append(f"| 1 | Initial version | {submitted} |")
+        rows.append(f"| 1 | Initial version | {submitted_link(initial_commit)} |")
     history_note = (
         f"Showing the {VERSION_LIMIT} most recent available versions. "
         if revisions[0].version > 2 or len(revisions) == VERSION_LIMIT
@@ -466,7 +472,9 @@ def annotate(
         print(f"No force-push history recorded for pull request #{pr_number} yet.")
         return
     body = revision_history_body(
-        revisions=revisions, repo_full_name=pull.get("nameWithOwner", f"{owner}/{repo}")
+        revisions=revisions,
+        repo_full_name=pull.get("nameWithOwner", f"{owner}/{repo}"),
+        base_ref_oid=pull.get("baseRefOid"),
     )
     if dry_run:
         print(body)
@@ -530,8 +538,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             "or the PR from --pr."
         ),
     )
-    parser.add_argument("--pr", type=int, help="Pull request number (when branch lookup is not enough)")
-    parser.add_argument("--repo", help="GitHub repo as OWNER/NAME, overriding the origin remote")
+    parser.add_argument(
+        "--pr", type=int, help="Pull request number (when branch lookup is not enough)"
+    )
+    parser.add_argument(
+        "--repo", help="GitHub repo as OWNER/NAME, overriding the origin remote"
+    )
     parser.add_argument("--branch", help="Head branch owning the PR to annotate")
     parser.add_argument(
         "-n",

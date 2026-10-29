@@ -117,21 +117,36 @@ class IncludePushedRevisionTest(unittest.TestCase):
 
 
 class RenderBodyTest(unittest.TestCase):
+    BASE_OID = "z" * 40
+
     def test_table(self) -> None:
         revisions = (
             Revision(before_commit_id="a" * 40, commit_id="b" * 40, is_current=False, version=2),
             Revision(before_commit_id="b" * 40, commit_id="c" * 40, is_current=True, version=3),
         )
-        body = revision_history_body(revisions=revisions, repo_full_name="octocat/Hello-World")
+        body = revision_history_body(
+            revisions=revisions,
+            repo_full_name="octocat/Hello-World",
+            base_ref_oid=self.BASE_OID,
+        )
         self.assertIn("<!-- jj-stack-revision-history -->", body)
-        self.assertIn("| Version | Changes from previous version | Submitted commit |", body)
+        self.assertIn("| Version | Changes from previous version | Submitted version |", body)
         self.assertIn("| 3 (current) |", body)
         self.assertIn(
             f"[`{'b' * 8}..{'c' * 8}`](https://github.com/octocat/Hello-World/"
             f"compare/{'b' * 40}..{'c' * 40})",
             body,
         )
-        self.assertIn(f"`{short_commit_id('c' * 40)}`", body)
+        self.assertIn(
+            f"[`{'c' * 8}`](https://github.com/octocat/Hello-World/"
+            f"compare/{self.BASE_OID}..{'c' * 40})",
+            body,
+        )
+        self.assertIn(
+            f"[`{'a' * 8}`](https://github.com/octocat/Hello-World/"
+            f"compare/{self.BASE_OID}..{'a' * 40})",
+            body,
+        )
         self.assertIn("| 1 | Initial version |", body)
         self.assertIn("Maintained by humus", body)
 
@@ -140,15 +155,30 @@ class RenderBodyTest(unittest.TestCase):
             Revision(before_commit_id="a" * 40, commit_id="b" * 40, is_current=False, version=42),
             Revision(before_commit_id="b" * 40, commit_id="c" * 40, is_current=True, version=43),
         )
-        body = revision_history_body(revisions=revisions, repo_full_name="octocat/Hello-World")
+        body = revision_history_body(
+            revisions=revisions,
+            repo_full_name="octocat/Hello-World",
+            base_ref_oid=self.BASE_OID,
+        )
         self.assertIn("Showing the 20 most recent available versions.", body)
 
-    def test_current_commit_linked(self) -> None:
+    def test_submitted_version_links_to_pr_diff(self) -> None:
+        revisions = (
+            Revision(before_commit_id="a" * 40, commit_id="b" * 40, is_current=True, version=2),
+        )
+        body = revision_history_body(
+            revisions=revisions,
+            repo_full_name="octocat/Hello-World",
+            base_ref_oid=self.BASE_OID,
+        )
+        self.assertIn(f"compare/{'a' * 40}..{'b' * 40}", body)
+        self.assertIn(f"compare/{self.BASE_OID}..{'b' * 40}", body)
+
+    def test_links_to_commit_when_base_oid_missing(self) -> None:
         revisions = (
             Revision(before_commit_id="a" * 40, commit_id="b" * 40, is_current=True, version=2),
         )
         body = revision_history_body(revisions=revisions, repo_full_name="octocat/Hello-World")
-        self.assertIn(f"compare/{'a' * 40}..{'b' * 40}", body)
         self.assertIn(f"commit/{'b' * 40}", body)
 
 
