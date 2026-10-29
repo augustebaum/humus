@@ -224,23 +224,27 @@ def _revisions_from_timeline(payload: dict[str, Any] | None) -> tuple[Revision, 
                 version=version,
             )
         )
-    return tuple(revisions)
+    return revisions
 
 
 def include_pushed_revision(
-    revisions: tuple[Revision, ...], branch_target: str | None
-) -> tuple[Revision, ...]:
+    revisions: list[Revision], branch_target: str | None
+) -> list[Revision]:
     """Append the branch's current commit when GitHub's timeline lags a push.
 
     GitHub records HEAD_REF_FORCE_PUSHED_EVENT events asynchronously, so the
     head commit reported for the branch can be newer than the newest recorded
     event. Treat the gap as one more revision.
     """
-    if branch_target is None or not revisions or revisions[-1].commit_id == branch_target:
+    if (
+        branch_target is None
+        or not revisions
+        or revisions[-1].commit_id == branch_target
+    ):
         return revisions
     last = revisions[-1]
-    prior = tuple(replace(revision, is_current=False) for revision in revisions)
-    return (
+    prior = [replace(revision, is_current=False) for revision in revisions]
+    return [
         *prior,
         Revision(
             before_commit_id=last.commit_id,
@@ -248,7 +252,7 @@ def include_pushed_revision(
             is_current=True,
             version=last.version + 1,
         ),
-    )
+    ]
 
 
 def _markdown_link(text: str, url: str) -> str:
@@ -256,7 +260,7 @@ def _markdown_link(text: str, url: str) -> str:
 
 
 def revision_history_body(
-    *, revisions: tuple[Revision, ...], repo_full_name: str
+    *, revisions: list[Revision], repo_full_name: str, base_ref_oid: str | None = None
 ) -> str:
     """Render the managed comment, newest version first."""
     revisions = revisions[-VERSION_LIMIT:]
@@ -304,7 +308,7 @@ def revision_history_body(
 
 def load_history(
     *, token: str, owner: str, repo: str, pr_number: int
-) -> tuple[tuple[Comment, ...], tuple[Revision, ...]]:
+) -> tuple[tuple[Comment, ...], list[Revision]]:
     """Fetch a PR's comments (looking for the managed one) and force pushes."""
     query = f"""
     query PullRequestHistory($owner: String!, $repo: String!, $number: Int!, $after: String) {{
