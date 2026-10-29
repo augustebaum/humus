@@ -293,7 +293,7 @@ def include_pushed_revision(
     ]
 
 
-def _markdown_link(text: str, url: str) -> str:
+def _markdown_link(*, text: str, url: str) -> str:
     return f"[`{text}`]({url})"
 
 
@@ -304,34 +304,41 @@ def revision_history_body(
     revisions = revisions[-VERSION_LIMIT:]
     repo_url = f"https://github.com/{repo_full_name}"
 
-    def submitted_link(commit_id: str) -> str:
+    def _changes_from_base(commit_id: str) -> str:
         """Link a version to the whole PR diff, not the head commit alone."""
-        url = (
-            f"{repo_url}/compare/{base_ref_oid}..{commit_id}"
+        return (
+            _markdown_link(
+                text=(f"{short_commit_id(base_ref_oid)}..{short_commit_id(commit_id)}"),
+                url=f"{repo_url}/compare/{base_ref_oid}..{commit_id}",
+            )
             if base_ref_oid is not None
-            else f"{repo_url}/commit/{commit_id}"
+            else _markdown_link(
+                text=short_commit_id(commit_id),
+                url=f"{repo_url}/commit/{commit_id}",
+            )
         )
-        return _markdown_link(short_commit_id(commit_id), url)
 
     rows = [
         MARKER,
         "## Revision history",
         "",
-        "| Version | Changes from previous version | Submitted version |",
+        "| Version | Changes from previous version | Changes from branch base |",
         "| --- | --- | --- |",
     ]
     for revision in reversed(revisions):
         version = f"{revision.version}{' (current)' if revision.is_current else ''}"
-        changes = _markdown_link(
-            f"{short_commit_id(revision.before_commit_id)}.."
-            f"{short_commit_id(revision.commit_id)}",
-            f"{repo_url}/compare/{revision.before_commit_id}..{revision.commit_id}",
+        changes_from_previous = _markdown_link(
+            text=(
+                f"{short_commit_id(revision.before_commit_id)}.."
+                f"{short_commit_id(revision.commit_id)}"
+            ),
+            url=f"{repo_url}/compare/{revision.before_commit_id}..{revision.commit_id}",
         )
-        submitted = submitted_link(revision.commit_id)
-        rows.append(f"| {version} | {changes} | {submitted} |")
+        changes_from_base = _changes_from_base(revision.commit_id)
+        rows.append(f"| {version} | {changes_from_previous} | {changes_from_base} |")
     if revisions[0].version == 2 and len(revisions) < VERSION_LIMIT:
         initial_commit = revisions[0].before_commit_id
-        rows.append(f"| 1 | Initial version | {submitted_link(initial_commit)} |")
+        rows.append(f"| 1 | Initial version | {_changes_from_base(initial_commit)} |")
     history_note = (
         f"Showing the {VERSION_LIMIT} most recent available versions. "
         if revisions[0].version > 2 or len(revisions) == VERSION_LIMIT

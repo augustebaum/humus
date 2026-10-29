@@ -130,21 +130,21 @@ class RenderBodyTest(unittest.TestCase):
             base_ref_oid=self.BASE_OID,
         )
         self.assertIn("<!-- jj-stack-revision-history -->", body)
-        self.assertIn("| Version | Changes from previous version | Submitted version |", body)
+        self.assertIn(
+            "| Version | Changes from previous version | Changes from branch base |",
+            body,
+        )
         self.assertIn("| 3 (current) |", body)
         self.assertIn(
-            f"[`{'b' * 8}..{'c' * 8}`](https://github.com/octocat/Hello-World/"
-            f"compare/{'b' * 40}..{'c' * 40})",
+            f"[`{'b' * 8}..{'c' * 8}`](https://github.com/octocat/Hello-World/compare/{'b' * 40}..{'c' * 40})",
             body,
         )
         self.assertIn(
-            f"[`{'c' * 8}`](https://github.com/octocat/Hello-World/"
-            f"compare/{self.BASE_OID}..{'c' * 40})",
+            f"[`{'z' * 8}..{'c' * 8}`](https://github.com/octocat/Hello-World/compare/{'z' * 40}..{'c' * 40})",
             body,
         )
         self.assertIn(
-            f"[`{'a' * 8}`](https://github.com/octocat/Hello-World/"
-            f"compare/{self.BASE_OID}..{'a' * 40})",
+            f"[`{'z' * 8}..{'a' * 8}`](https://github.com/octocat/Hello-World/compare/{'z' * 40}..{'a' * 40})",
             body,
         )
         self.assertIn("| 1 | Initial version |", body)
