@@ -201,8 +201,7 @@ def find_pr_by_number(*, token: str, owner: str, repo: str, number: int) -> dict
     return pr
 
 
-def _revisions_from_timeline(payload: dict[str, Any] | None) -> tuple[Revision, ...]:
-    timeline = (payload or {}).get("timelineItems") or {}
+def _revisions_from_timeline(timeline: dict[str, Any] | None) -> list[Revision]:
     nodes = timeline.get("nodes") or ()
     filtered_count = timeline.get("filteredCount") or 0
     revisions: list[Revision] = []

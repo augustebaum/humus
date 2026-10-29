@@ -41,22 +41,20 @@ class ParseRepoTest(unittest.TestCase):
 
 class RevisionsFromTimelineTest(unittest.TestCase):
     def test_full_window_reconstruction(self) -> None:
-        payload = {
-            "timelineItems": {
-                "filteredCount": 2,
-                "nodes": [
-                    {
-                        "beforeCommit": {"oid": "a" * 40},
-                        "afterCommit": {"oid": "b" * 40},
-                    },
-                    {
-                        "beforeCommit": {"oid": "b" * 40},
-                        "afterCommit": {"oid": "c" * 40},
-                    },
-                ],
-            }
+        timeline = {
+            "filteredCount": 2,
+            "nodes": [
+                {
+                    "beforeCommit": {"oid": "a" * 40},
+                    "afterCommit": {"oid": "b" * 40},
+                },
+                {
+                    "beforeCommit": {"oid": "b" * 40},
+                    "afterCommit": {"oid": "c" * 40},
+                },
+            ],
         }
-        revisions = _revisions_from_timeline(payload)
+        revisions = _revisions_from_timeline(timeline)
         self.assertEqual(len(revisions), 2)
         self.assertEqual(revisions[0].version, 2)
         self.assertFalse(revisions[0].is_current)
@@ -64,30 +62,26 @@ class RevisionsFromTimelineTest(unittest.TestCase):
         self.assertTrue(revisions[1].is_current)
 
     def test_window_shorter_than_history(self) -> None:
-        payload = {
-            "timelineItems": {
-                "filteredCount": 42,
-                "nodes": [
-                    {"beforeCommit": {"oid": "a" * 40}, "afterCommit": {"oid": "b" * 40}},
-                    {"beforeCommit": {"oid": "b" * 40}, "afterCommit": {"oid": "c" * 40}},
-                ],
-            }
+        timeline = {
+            "filteredCount": 42,
+            "nodes": [
+                {"beforeCommit": {"oid": "a" * 40}, "afterCommit": {"oid": "b" * 40}},
+                {"beforeCommit": {"oid": "b" * 40}, "afterCommit": {"oid": "c" * 40}},
+            ],
         }
-        revisions = _revisions_from_timeline(payload)
+        revisions = _revisions_from_timeline(timeline)
         self.assertEqual(revisions[0].version, 42)
         self.assertEqual(revisions[1].version, 43)
 
     def test_events_without_commit_are_skipped(self) -> None:
-        payload = {
-            "timelineItems": {
-                "filteredCount": 2,
-                "nodes": [
-                    {"beforeCommit": None, "afterCommit": {"oid": "b" * 40}},
-                    {"beforeCommit": {"oid": "b" * 40}, "afterCommit": {"oid": "c" * 40}},
-                ],
-            }
+        timeline = {
+            "filteredCount": 2,
+            "nodes": [
+                {"beforeCommit": None, "afterCommit": {"oid": "b" * 40}},
+                {"beforeCommit": {"oid": "b" * 40}, "afterCommit": {"oid": "c" * 40}},
+            ],
         }
-        revisions = _revisions_from_timeline(payload)
+        revisions = _revisions_from_timeline(timeline)
         self.assertEqual(len(revisions), 1)
         self.assertEqual(revisions[0].version, 3)
 
