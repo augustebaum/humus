@@ -43,8 +43,9 @@ The repo comes from `git remote get-url origin`; pass `--repo OWNER/NAME` to
 override it. Run humus again after the next force-push; it rewrites the same
 comment in place.
 
-A bare `humus` is inert: it prints help and exits. humus never pushes anything
-and never writes a comment until you name a target.
+A bare `humus` is inert: it prints help and exits. Apart from the `jj-push`
+subcommand, humus never pushes anything and never writes a comment until you
+name a target.
 
 | flag | meaning |
 | --- | --- |
@@ -61,21 +62,22 @@ humus --branch feature/user-repairs --dry-run
 
 ## Use with jj
 
-A small wrapper script connects `jj push` to humus: it pushes, reads the
-bookmark on the working-copy commit, and runs humus for that branch. The
-branch is named explicitly, so a bare `humus` still does nothing on its own.
+The `jj-push` subcommand connects `jj push` to humus: it runs `jj git push`,
+reads the bookmark on the working-copy commit, and updates the comment for
+that branch. The branch is named explicitly, so a bare `humus` still does
+nothing on its own.
 
-Point a jj alias at the wrapper:
+Point a jj alias at the subcommand:
 
 ```console
-jj config set --user aliases.push '["util", "exec", "--", "sh", "/path/to/humus/checkout/src/jj-humus-push"]'
+jj config set --user aliases.push '["util", "exec", "--", "humus", "jj-push"]'
 ```
 
 `jj push` then pushes as usual and updates the revision history comment for
-the pushed branch. The wrapper skips humus when the working-copy commit has
-no bookmark, or when humus is not on PATH. It assumes the pushed change
-carries one bookmark, which is the common case; use `--pr` manually when it
-does not.
+the pushed branch. Anything after `jj-push` on the command line is forwarded
+to `jj git push`. The subcommand skips the comment when the working-copy
+commit has no bookmark. It assumes the pushed change carries one bookmark,
+which is the common case; use `--pr` manually when it does not.
 
 ## The comment
 

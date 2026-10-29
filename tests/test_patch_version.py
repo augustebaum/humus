@@ -2,10 +2,12 @@ import contextlib
 import io
 import sys
 import unittest
+import unittest.mock as mock
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
+from humus import cli
 from humus.cli import (
     Revision,
     include_pushed_revision,
@@ -176,6 +178,101 @@ class BareInvocationTest(unittest.TestCase):
             self.assertEqual(caught.exception.code, 0)
             outputs.append(buffer.getvalue())
         self.assertEqual(outputs[0], outputs[1])
+
+
+class JJPushTest(unittest.TestCase):
+    def test_pushes_then_annotates_bookmarked_branch(self) -> None:
+        process = mock.Mock(returncode=0)
+        with mock.patch.object(cli.subprocess, "run", return_value=process), \
+                mock.patch.object(cli, "_working_copy_bookmark", return_value="feature/x"), \
+                mock.patch.object(cli, "detect_repo", return_value=("octocat", "Hello-World")), \
+                mock.patch.object(cli, "_require_token", return_value="token"), \
+                mock.patch.object(cli, "annotate") as annotate:
+            rc = main(["jj-push"])
+        self.assertEqual(rc, 0)
+        self.assertEqual(
+            annotate.call_args.kwargs,
+            {
+                "token": "token",
+                "owner": "octocat",
+                "repo": "Hello-World",
+                "pr": None,
+                "branch": "feature/x",
+                "dry_run": False,
+            },
+        )
+
+    def test_forwards_args_to_jj_push(self) -> None:
+        process = mock.Mock(returncode=0)
+        with mock.patch.object(cli.subprocess, "run", return_value=process) as run, \
+                mock.patch.object(cli, "_working_copy_bookmark", return_value="main"), \
+                mock.patch.object(cli, "detect_repo", return_value=("o", "r")), \
+                mock.patch.object(cli, "_require_token", return_value="t"), \
+                mock.patch.object(cli, "annotate"):
+            rc = main(["jj-push", "--to", "origin", "-r", "@"])
+        self.assertEqual(rc, 0)
+        run.assert_called_once_with(["jj", "git", "push", "--to", "origin", "-r", "@"])
+
+    def test_repo_flag_overrides_origin_remote(self) -> None:
+        process = mock.Mock(returncode=0)
+        with mock.patch.object(cli.subprocess, "run", return_value=process), \
+                mock.patch.object(cli, "_working_copy_bookmark", return_value="main"), \
+                mock.patch.object(cli, "detect_repo") as detect, \
+                mock.patch.object(cli, "_require_token", return_value="t"), \
+                mock.patch.object(cli, "annotate") as annotate:
+            rc = main(["--repo", "o/r", "jj-push"])
+        self.assertEqual(rc, 0)
+        detect.assert_not_called()
+        self.assertEqual(annotate.call_args.kwargs["repo"], "r")
+
+    def test_dry_run_flag_is_forwarded(self) -> None:
+        process = mock.Mock(returncode=0)
+        with mock.patch.object(cli.subprocess, "run", return_value=process), \
+                mock.patch.object(cli, "_working_copy_bookmark", return_value="main"), \
+                mock.patch.object(cli, "detect_repo", return_value=("o", "r")), \
+                mock.patch.object(cli, "_require_token", return_value="t"), \
+                mock.patch.object(cli, "annotate") as annotate:
+            rc = main(["--dry-run", "jj-push"])
+        self.assertEqual(rc, 0)
+        self.assertTrue(annotate.call_args.kwargs["dry_run"])
+
+    def test_no_bookmark_skips_comment(self) -> None:
+        process = mock.Mock(returncode=0)
+        stderr = io.StringIO()
+        with mock.patch.object(cli.subprocess, "run", return_value=process), \
+                mock.patch.object(cli, "_working_copy_bookmark", return_value=""), \
+                mock.patch.object(cli, "annotate") as annotate, \
+                contextlib.redirect_stderr(stderr):
+            rc = main(["jj-push"])
+        self.assertEqual(rc, 0)
+        annotate.assert_not_called()
+        self.assertIn("no bookmark", stderr.getvalue())
+
+    def test_push_failure_exit_code_propagates(self) -> None:
+        failed = mock.Mock(returncode=3)
+        with mock.patch.object(cli.subprocess, "run", return_value=failed), \
+                mock.patch.object(cli, "annotate") as annotate:
+            rc = main(["jj-push"])
+        self.assertEqual(rc, 3)
+        annotate.assert_not_called()
+
+    def test_missing_jj_is_a_user_error(self) -> None:
+        stderr = io.StringIO()
+        with mock.patch.object(cli.subprocess, "run", side_effect=FileNotFoundError), \
+                contextlib.redirect_stderr(stderr):
+            rc = main(["jj-push"])
+        self.assertEqual(rc, 1)
+        self.assertIn("jj", stderr.getvalue())
+
+    def test_unknown_command_errors(self) -> None:
+        stderr = io.StringIO()
+        with mock.patch.object(cli.subprocess, "run") as run, \
+                contextlib.redirect_stderr(stderr):
+            with self.assertRaises(SystemExit) as caught:
+                main(["bogus"])
+        self.assertEqual(caught.exception.code, 2)
+        run.assert_not_called()
+        self.assertIn("unrecognized arguments", stderr.getvalue())
 
 
 if __name__ == "__main__":

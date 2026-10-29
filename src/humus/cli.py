@@ -6,8 +6,9 @@ https://github.com/bos/jj-stack/blob/main/src/jj_stack/commands/submit/revision_
 Run it after a force-push. Give it the branch or PR number; it finds the open
 pull request for that branch on GitHub, reads the PR's force-push timeline,
 renders a version table, and creates or updates one managed comment on the PR.
-Bare invocation only prints help; nothing is pushed or written without an
-explicit --pr or --branch.
+The jj-push subcommand runs `jj git push` and then does this for the pushed
+branch. Bare invocation only prints help; nothing is pushed or written
+without a target or the jj-push subcommand.
 """
 
 from __future__ import annotations
@@ -388,6 +389,97 @@ def _parse_repo(repo: str) -> tuple[str, str]:
     return parts[0], parts[1]
 
 
+def _require_token() -> str:
+    token = github_token()
+    if token is None:
+        raise ToolError(
+            "No GitHub token found. Set GITHUB_TOKEN or GH_TOKEN, or run `gh auth login`."
+        )
+    return token
+
+
+def annotate(
+    *,
+    token: str,
+    owner: str,
+    repo: str,
+    pr: int | None,
+    branch: str | None,
+    dry_run: bool,
+) -> None:
+    """Render the revision-history comment for a branch's PR and sync it.
+
+    Exactly one of pr or branch is given; a branch is resolved to its open PR
+    first.
+    """
+    if pr is not None:
+        pull = find_pr_by_number(token=token, owner=owner, repo=repo, number=pr)
+    else:
+        pull = find_pr_by_branch(token=token, owner=owner, repo=repo, branch=branch)
+    pr_number = pull["number"]
+    comments, revisions = load_history(
+        token=token, owner=owner, repo=repo, pr_number=pr_number
+    )
+    revisions = include_pushed_revision(revisions, pull.get("headRefOid"))
+    if not revisions:
+        print(f"No force-push history recorded for pull request #{pr_number} yet.")
+        return
+    body = revision_history_body(
+        revisions=revisions, repo_full_name=pull.get("nameWithOwner", f"{owner}/{repo}")
+    )
+    if dry_run:
+        print(body)
+        return
+    status = sync_comment(
+        token=token,
+        owner=owner,
+        repo=repo,
+        pr_number=pr_number,
+        comments=comments,
+        body=body,
+    )
+    print(f"Revision history comment for pull request #{pr_number}: {status}.")
+
+
+def _working_copy_bookmark() -> str:
+    """Name of the bookmark on @, or "" when @ has none."""
+    output = _run(("jj", "bookmark", "list", "-r", "@", "-T", "name"))
+    return output.splitlines()[0].strip() if output else ""
+
+
+def jj_push(
+    args: Sequence[str], *, repo: str | None = None, dry_run: bool = False
+) -> int:
+    """Push with jj, then keep the comment current for the pushed branch.
+
+    Runs `jj git push` first; the branch comes from the bookmark on the
+    working-copy commit, so bare `humus` stays inert on its own.
+    """
+    try:
+        push = subprocess.run(["jj", "git", "push", *args])
+    except FileNotFoundError:
+        raise ToolError("Could not find `jj` on PATH")
+    if push.returncode != 0:
+        return push.returncode
+    branch = _working_copy_bookmark()
+    if not branch:
+        print(
+            "humus: the working-copy commit has no bookmark; skipping the comment",
+            file=sys.stderr,
+        )
+        return 0
+    owner, repo_name = _parse_repo(repo) if repo else detect_repo()
+    annotate(
+        token=_require_token(),
+        owner=owner,
+        repo=repo_name,
+        pr=None,
+        branch=branch,
+        dry_run=dry_run,
+    )
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="humus",
@@ -406,45 +498,34 @@ def main(argv: Sequence[str] | None = None) -> int:
         action="store_true",
         help="Print the rendered comment body to stdout without writing it",
     )
+    parser.add_argument(
+        "command",
+        nargs=argparse.REMAINDER,
+        metavar="COMMAND",
+        help=(
+            "`jj-push` runs `jj git push` (with anything after it passed "
+            "through) and then updates the comment for the pushed branch"
+        ),
+    )
     args = parser.parse_args(list(argv) if argv is not None else None)
 
     try:
+        if args.command and args.command[0] == "jj-push":
+            return jj_push(args.command[1:], repo=args.repo, dry_run=args.dry_run)
+        if args.command:
+            parser.error(f"unrecognized arguments: {' '.join(args.command)}")
         if args.pr is None and args.branch is None:
             parser.print_help()
             return 0
-        token = github_token()
-        if token is None:
-            raise ToolError(
-                "No GitHub token found. Set GITHUB_TOKEN or GH_TOKEN, or run `gh auth login`."
-            )
         owner, repo = _parse_repo(args.repo) if args.repo else detect_repo()
-        if args.pr is not None:
-            pr = find_pr_by_number(token=token, owner=owner, repo=repo, number=args.pr)
-        else:
-            pr = find_pr_by_branch(token=token, owner=owner, repo=repo, branch=args.branch)
-        pr_number = pr["number"]
-        comments, revisions = load_history(
-            token=token, owner=owner, repo=repo, pr_number=pr_number
-        )
-        revisions = include_pushed_revision(revisions, pr.get("headRefOid"))
-        if not revisions:
-            print(f"No force-push history recorded for pull request #{pr_number} yet.")
-            return 0
-        body = revision_history_body(
-            revisions=revisions, repo_full_name=pr.get("nameWithOwner", f"{owner}/{repo}")
-        )
-        if args.dry_run:
-            print(body)
-            return 0
-        status = sync_comment(
-            token=token,
+        annotate(
+            token=_require_token(),
             owner=owner,
             repo=repo,
-            pr_number=pr_number,
-            comments=comments,
-            body=body,
+            pr=args.pr,
+            branch=args.branch,
+            dry_run=args.dry_run,
         )
-        print(f"Revision history comment for pull request #{pr_number}: {status}.")
     except ToolError as error:
         print(f"humus: {error}", file=sys.stderr)
         return 1
