@@ -15,7 +15,9 @@ from humus.cli import (
     parse_github_repo,
     revision_history_body,
     short_commit_id,
+    _https_context,
     _revisions_from_timeline,
+    _SYSTEM_CA_BUNDLES,
 )
 
 
@@ -153,6 +155,49 @@ class RenderBodyTest(unittest.TestCase):
 class ShortCommitIdTest(unittest.TestCase):
     def test_prefix(self) -> None:
         self.assertEqual(short_commit_id("0123456789abcdef"), "01234567")
+
+
+class HttpsContextTest(unittest.TestCase):
+    def setUp(self) -> None:
+        _https_context.cache_clear()
+        self.addCleanup(_https_context.cache_clear)
+
+    def test_env_ssl_cert_file_wins(self) -> None:
+        default = mock.Mock(cafile="/missing.pem", openssl_cafile="/missing.pem")
+        with mock.patch.object(cli.ssl, "get_default_verify_paths", return_value=default), \
+                mock.patch.object(cli.os.path, "isfile", return_value=True), \
+                mock.patch.object(cli.ssl, "create_default_context") as create, \
+                mock.patch.dict(cli.os.environ, {"SSL_CERT_FILE": "/env.pem"}, clear=True):
+            _https_context()
+        create.assert_called_once_with(cafile="/env.pem")
+
+    def test_default_cafile_is_used_when_present(self) -> None:
+        default = mock.Mock(cafile="/distro/ca.pem", openssl_cafile="/distro/ca.pem")
+        with mock.patch.object(cli.ssl, "get_default_verify_paths", return_value=default), \
+                mock.patch.object(cli.os.path, "isfile", side_effect=lambda p: p == "/distro/ca.pem"), \
+                mock.patch.object(cli.ssl, "create_default_context") as create, \
+                mock.patch.dict(cli.os.environ, {}, clear=True):
+            _https_context()
+        create.assert_called_once_with(cafile="/distro/ca.pem")
+
+    def test_system_bundle_is_found_when_default_is_missing(self) -> None:
+        default = mock.Mock(cafile=None, openssl_cafile="/etc/ssl/cert.pem")
+        bundle = _SYSTEM_CA_BUNDLES[0]
+        with mock.patch.object(cli.ssl, "get_default_verify_paths", return_value=default), \
+                mock.patch.object(cli.os.path, "isfile", side_effect=lambda p: p == bundle), \
+                mock.patch.object(cli.ssl, "create_default_context") as create, \
+                mock.patch.dict(cli.os.environ, {}, clear=True):
+            _https_context()
+        create.assert_called_once_with(cafile=bundle)
+
+    def test_no_bundle_falls_back_to_default_context(self) -> None:
+        default = mock.Mock(cafile=None, openssl_cafile=None)
+        with mock.patch.object(cli.ssl, "get_default_verify_paths", return_value=default), \
+                mock.patch.object(cli.os.path, "isfile", return_value=False), \
+                mock.patch.object(cli.ssl, "create_default_context") as create, \
+                mock.patch.dict(cli.os.environ, {}, clear=True):
+            _https_context()
+        create.assert_called_once_with()
 
 
 class BareInvocationTest(unittest.TestCase):

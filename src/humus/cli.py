@@ -17,6 +17,7 @@ import argparse
 import json
 import os
 import re
+import ssl
 import subprocess
 import sys
 import urllib.error
@@ -32,6 +33,41 @@ USER_AGENT = "humus"
 REST_BASE = os.environ.get("GITHUB_API_URL", "https://api.github.com").rstrip("/")
 GRAPHQL_URL = f"{REST_BASE}/graphql"
 _MAX_COMMENT_PAGES = 20
+
+_SYSTEM_CA_BUNDLES = (
+    "/etc/ssl/certs/ca-certificates.crt",
+    "/etc/pki/tls/certs/ca-bundle.crt",
+    "/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.crt",
+    "/etc/ssl/ca-bundle.pem",
+    "/etc/ssl/cert.pem",
+    "/usr/local/etc/openssl/cert.pem",
+    "/etc/pki/tls/cacert.pem",
+)
+
+
+@functools.lru_cache(maxsize=1)
+def _https_context() -> ssl.SSLContext:
+    """A context that can verify TLS against the host's trust store.
+
+    uv-managed pythons compile in a cafile path that usually does not exist on
+    the host, so otherwise-fine HTTPS fails with CERTIFICATE_VERIFY_FAILED.
+    Honor SSL_CERT_FILE, then pick the first existing cafile from the OpenSSL
+    defaults and known distro locations; fall back to the default context.
+    """
+    default = ssl.get_default_verify_paths()
+    candidates = (
+        os.environ.get("SSL_CERT_FILE"),
+        default.cafile,
+        default.openssl_cafile,
+        *_SYSTEM_CA_BUNDLES,
+    )
+    for cafile in candidates:
+        if cafile and os.path.isfile(cafile):
+            return ssl.create_default_context(cafile=cafile)
+    env_capath = os.environ.get("SSL_CERT_DIR")
+    if env_capath and os.path.isdir(env_capath):
+        return ssl.create_default_context(capath=env_capath)
+    return ssl.create_default_context()
 
 
 class ToolError(Exception):
@@ -106,7 +142,7 @@ def _request(url: str, *, method: str, token: str, payload: Any = None) -> Any:
     body = json.dumps(payload).encode() if payload is not None else None
     request = urllib.request.Request(url, data=body, headers=headers, method=method)
     try:
-        with urllib.request.urlopen(request) as response:
+        with urllib.request.urlopen(request, context=_https_context()) as response:
             raw = response.read()
     except urllib.error.HTTPError as error:
         raise ToolError(
