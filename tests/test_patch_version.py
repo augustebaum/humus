@@ -90,8 +90,12 @@ class RevisionsFromTimelineTest(unittest.TestCase):
 
 class IncludePushedRevisionTest(unittest.TestCase):
     revisions = (
-        Revision(before_commit_id="a" * 40, commit_id="b" * 40, is_current=False, version=2),
-        Revision(before_commit_id="b" * 40, commit_id="c" * 40, is_current=True, version=3),
+        Revision(
+            before_commit_id="a" * 40, commit_id="b" * 40, is_current=False, version=2
+        ),
+        Revision(
+            before_commit_id="b" * 40, commit_id="c" * 40, is_current=True, version=3
+        ),
     )
 
     def test_no_append_when_timeline_current(self) -> None:
@@ -121,8 +125,18 @@ class RenderBodyTest(unittest.TestCase):
 
     def test_table(self) -> None:
         revisions = (
-            Revision(before_commit_id="a" * 40, commit_id="b" * 40, is_current=False, version=2),
-            Revision(before_commit_id="b" * 40, commit_id="c" * 40, is_current=True, version=3),
+            Revision(
+                before_commit_id="a" * 40,
+                commit_id="b" * 40,
+                is_current=False,
+                version=2,
+            ),
+            Revision(
+                before_commit_id="b" * 40,
+                commit_id="c" * 40,
+                is_current=True,
+                version=3,
+            ),
         )
         body = revision_history_body(
             revisions=revisions,
@@ -152,8 +166,18 @@ class RenderBodyTest(unittest.TestCase):
 
     def test_version_cap_note(self) -> None:
         revisions = (
-            Revision(before_commit_id="a" * 40, commit_id="b" * 40, is_current=False, version=42),
-            Revision(before_commit_id="b" * 40, commit_id="c" * 40, is_current=True, version=43),
+            Revision(
+                before_commit_id="a" * 40,
+                commit_id="b" * 40,
+                is_current=False,
+                version=42,
+            ),
+            Revision(
+                before_commit_id="b" * 40,
+                commit_id="c" * 40,
+                is_current=True,
+                version=43,
+            ),
         )
         body = revision_history_body(
             revisions=revisions,
@@ -164,7 +188,12 @@ class RenderBodyTest(unittest.TestCase):
 
     def test_submitted_version_links_to_pr_diff(self) -> None:
         revisions = (
-            Revision(before_commit_id="a" * 40, commit_id="b" * 40, is_current=True, version=2),
+            Revision(
+                before_commit_id="a" * 40,
+                commit_id="b" * 40,
+                is_current=True,
+                version=2,
+            ),
         )
         body = revision_history_body(
             revisions=revisions,
@@ -176,9 +205,16 @@ class RenderBodyTest(unittest.TestCase):
 
     def test_links_to_commit_when_base_oid_missing(self) -> None:
         revisions = (
-            Revision(before_commit_id="a" * 40, commit_id="b" * 40, is_current=True, version=2),
+            Revision(
+                before_commit_id="a" * 40,
+                commit_id="b" * 40,
+                is_current=True,
+                version=2,
+            ),
         )
-        body = revision_history_body(revisions=revisions, repo_full_name="octocat/Hello-World")
+        body = revision_history_body(
+            revisions=revisions, repo_full_name="octocat/Hello-World"
+        )
         self.assertIn(f"commit/{'b' * 40}", body)
 
 
@@ -194,38 +230,56 @@ class HttpsContextTest(unittest.TestCase):
 
     def test_env_ssl_cert_file_wins(self) -> None:
         default = mock.Mock(cafile="/missing.pem", openssl_cafile="/missing.pem")
-        with mock.patch.object(cli.ssl, "get_default_verify_paths", return_value=default), \
-                mock.patch.object(cli.os.path, "isfile", return_value=True), \
-                mock.patch.object(cli.ssl, "create_default_context") as create, \
-                mock.patch.dict(cli.os.environ, {"SSL_CERT_FILE": "/env.pem"}, clear=True):
+        with (
+            mock.patch.object(
+                cli.ssl, "get_default_verify_paths", return_value=default
+            ),
+            mock.patch.object(cli.os.path, "isfile", return_value=True),
+            mock.patch.object(cli.ssl, "create_default_context") as create,
+            mock.patch.dict(cli.os.environ, {"SSL_CERT_FILE": "/env.pem"}, clear=True),
+        ):
             _https_context()
         create.assert_called_once_with(cafile="/env.pem")
 
     def test_default_cafile_is_used_when_present(self) -> None:
         default = mock.Mock(cafile="/distro/ca.pem", openssl_cafile="/distro/ca.pem")
-        with mock.patch.object(cli.ssl, "get_default_verify_paths", return_value=default), \
-                mock.patch.object(cli.os.path, "isfile", side_effect=lambda p: p == "/distro/ca.pem"), \
-                mock.patch.object(cli.ssl, "create_default_context") as create, \
-                mock.patch.dict(cli.os.environ, {}, clear=True):
+        with (
+            mock.patch.object(
+                cli.ssl, "get_default_verify_paths", return_value=default
+            ),
+            mock.patch.object(
+                cli.os.path, "isfile", side_effect=lambda p: p == "/distro/ca.pem"
+            ),
+            mock.patch.object(cli.ssl, "create_default_context") as create,
+            mock.patch.dict(cli.os.environ, {}, clear=True),
+        ):
             _https_context()
         create.assert_called_once_with(cafile="/distro/ca.pem")
 
     def test_system_bundle_is_found_when_default_is_missing(self) -> None:
         default = mock.Mock(cafile=None, openssl_cafile="/etc/ssl/cert.pem")
         bundle = _SYSTEM_CA_BUNDLES[0]
-        with mock.patch.object(cli.ssl, "get_default_verify_paths", return_value=default), \
-                mock.patch.object(cli.os.path, "isfile", side_effect=lambda p: p == bundle), \
-                mock.patch.object(cli.ssl, "create_default_context") as create, \
-                mock.patch.dict(cli.os.environ, {}, clear=True):
+        with (
+            mock.patch.object(
+                cli.ssl, "get_default_verify_paths", return_value=default
+            ),
+            mock.patch.object(cli.os.path, "isfile", side_effect=lambda p: p == bundle),
+            mock.patch.object(cli.ssl, "create_default_context") as create,
+            mock.patch.dict(cli.os.environ, {}, clear=True),
+        ):
             _https_context()
         create.assert_called_once_with(cafile=bundle)
 
     def test_no_bundle_falls_back_to_default_context(self) -> None:
         default = mock.Mock(cafile=None, openssl_cafile=None)
-        with mock.patch.object(cli.ssl, "get_default_verify_paths", return_value=default), \
-                mock.patch.object(cli.os.path, "isfile", return_value=False), \
-                mock.patch.object(cli.ssl, "create_default_context") as create, \
-                mock.patch.dict(cli.os.environ, {}, clear=True):
+        with (
+            mock.patch.object(
+                cli.ssl, "get_default_verify_paths", return_value=default
+            ),
+            mock.patch.object(cli.os.path, "isfile", return_value=False),
+            mock.patch.object(cli.ssl, "create_default_context") as create,
+            mock.patch.dict(cli.os.environ, {}, clear=True),
+        ):
             _https_context()
         create.assert_called_once_with()
 
@@ -252,11 +306,15 @@ class BareInvocationTest(unittest.TestCase):
 class JJPushTest(unittest.TestCase):
     def test_pushes_then_annotates_bookmarked_branch(self) -> None:
         process = mock.Mock(returncode=0)
-        with mock.patch.object(cli.subprocess, "run", return_value=process), \
-                mock.patch.object(cli, "_working_copy_bookmark", return_value="feature/x"), \
-                mock.patch.object(cli, "detect_repo", return_value=("octocat", "Hello-World")), \
-                mock.patch.object(cli, "_require_token", return_value="token"), \
-                mock.patch.object(cli, "annotate") as annotate:
+        with (
+            mock.patch.object(cli.subprocess, "run", return_value=process),
+            mock.patch.object(cli, "_working_copy_bookmark", return_value="feature/x"),
+            mock.patch.object(
+                cli, "detect_repo", return_value=("octocat", "Hello-World")
+            ),
+            mock.patch.object(cli, "_require_token", return_value="token"),
+            mock.patch.object(cli, "annotate") as annotate,
+        ):
             rc = main(["jj-push"])
         self.assertEqual(rc, 0)
         self.assertEqual(
@@ -273,22 +331,26 @@ class JJPushTest(unittest.TestCase):
 
     def test_forwards_args_to_jj_push(self) -> None:
         process = mock.Mock(returncode=0)
-        with mock.patch.object(cli.subprocess, "run", return_value=process) as run, \
-                mock.patch.object(cli, "_working_copy_bookmark", return_value="main"), \
-                mock.patch.object(cli, "detect_repo", return_value=("o", "r")), \
-                mock.patch.object(cli, "_require_token", return_value="t"), \
-                mock.patch.object(cli, "annotate"):
+        with (
+            mock.patch.object(cli.subprocess, "run", return_value=process) as run,
+            mock.patch.object(cli, "_working_copy_bookmark", return_value="main"),
+            mock.patch.object(cli, "detect_repo", return_value=("o", "r")),
+            mock.patch.object(cli, "_require_token", return_value="t"),
+            mock.patch.object(cli, "annotate"),
+        ):
             rc = main(["jj-push", "--to", "origin", "-r", "@"])
         self.assertEqual(rc, 0)
         run.assert_called_once_with(["jj", "git", "push", "--to", "origin", "-r", "@"])
 
     def test_repo_flag_overrides_origin_remote(self) -> None:
         process = mock.Mock(returncode=0)
-        with mock.patch.object(cli.subprocess, "run", return_value=process), \
-                mock.patch.object(cli, "_working_copy_bookmark", return_value="main"), \
-                mock.patch.object(cli, "detect_repo") as detect, \
-                mock.patch.object(cli, "_require_token", return_value="t"), \
-                mock.patch.object(cli, "annotate") as annotate:
+        with (
+            mock.patch.object(cli.subprocess, "run", return_value=process),
+            mock.patch.object(cli, "_working_copy_bookmark", return_value="main"),
+            mock.patch.object(cli, "detect_repo") as detect,
+            mock.patch.object(cli, "_require_token", return_value="t"),
+            mock.patch.object(cli, "annotate") as annotate,
+        ):
             rc = main(["--repo", "o/r", "jj-push"])
         self.assertEqual(rc, 0)
         detect.assert_not_called()
@@ -296,11 +358,13 @@ class JJPushTest(unittest.TestCase):
 
     def test_dry_run_flag_is_forwarded(self) -> None:
         process = mock.Mock(returncode=0)
-        with mock.patch.object(cli.subprocess, "run", return_value=process), \
-                mock.patch.object(cli, "_working_copy_bookmark", return_value="main"), \
-                mock.patch.object(cli, "detect_repo", return_value=("o", "r")), \
-                mock.patch.object(cli, "_require_token", return_value="t"), \
-                mock.patch.object(cli, "annotate") as annotate:
+        with (
+            mock.patch.object(cli.subprocess, "run", return_value=process),
+            mock.patch.object(cli, "_working_copy_bookmark", return_value="main"),
+            mock.patch.object(cli, "detect_repo", return_value=("o", "r")),
+            mock.patch.object(cli, "_require_token", return_value="t"),
+            mock.patch.object(cli, "annotate") as annotate,
+        ):
             rc = main(["--dry-run", "jj-push"])
         self.assertEqual(rc, 0)
         self.assertTrue(annotate.call_args.kwargs["dry_run"])
@@ -308,10 +372,12 @@ class JJPushTest(unittest.TestCase):
     def test_no_bookmark_skips_comment(self) -> None:
         process = mock.Mock(returncode=0)
         stderr = io.StringIO()
-        with mock.patch.object(cli.subprocess, "run", return_value=process), \
-                mock.patch.object(cli, "_working_copy_bookmark", return_value=""), \
-                mock.patch.object(cli, "annotate") as annotate, \
-                contextlib.redirect_stderr(stderr):
+        with (
+            mock.patch.object(cli.subprocess, "run", return_value=process),
+            mock.patch.object(cli, "_working_copy_bookmark", return_value=""),
+            mock.patch.object(cli, "annotate") as annotate,
+            contextlib.redirect_stderr(stderr),
+        ):
             rc = main(["jj-push"])
         self.assertEqual(rc, 0)
         annotate.assert_not_called()
@@ -319,24 +385,30 @@ class JJPushTest(unittest.TestCase):
 
     def test_push_failure_exit_code_propagates(self) -> None:
         failed = mock.Mock(returncode=3)
-        with mock.patch.object(cli.subprocess, "run", return_value=failed), \
-                mock.patch.object(cli, "annotate") as annotate:
+        with (
+            mock.patch.object(cli.subprocess, "run", return_value=failed),
+            mock.patch.object(cli, "annotate") as annotate,
+        ):
             rc = main(["jj-push"])
         self.assertEqual(rc, 3)
         annotate.assert_not_called()
 
     def test_missing_jj_is_a_user_error(self) -> None:
         stderr = io.StringIO()
-        with mock.patch.object(cli.subprocess, "run", side_effect=FileNotFoundError), \
-                contextlib.redirect_stderr(stderr):
+        with (
+            mock.patch.object(cli.subprocess, "run", side_effect=FileNotFoundError),
+            contextlib.redirect_stderr(stderr),
+        ):
             rc = main(["jj-push"])
         self.assertEqual(rc, 1)
         self.assertIn("jj", stderr.getvalue())
 
     def test_unknown_command_errors(self) -> None:
         stderr = io.StringIO()
-        with mock.patch.object(cli.subprocess, "run") as run, \
-                contextlib.redirect_stderr(stderr):
+        with (
+            mock.patch.object(cli.subprocess, "run") as run,
+            contextlib.redirect_stderr(stderr),
+        ):
             with self.assertRaises(SystemExit) as caught:
                 main(["bogus"])
         self.assertEqual(caught.exception.code, 2)
