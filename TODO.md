@@ -1,0 +1,4 @@
+- [ ] `jj push` should just work
+  - humus should know to update PRs linked with whichever bookmarks were updated by the most recent `jj push`
+  - `jj git push && humus` results in a weird comment with malformed results. Why?
+  - It should open PRs if not open.
