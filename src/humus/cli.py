@@ -156,7 +156,9 @@ query PullRequestForBranch($owner: String!, $repo: String!, $branch: String!) {
 """
 
 
-def find_pr_by_branch(*, token: str, owner: str, repo: str, branch: str) -> dict[str, Any]:
+def find_pr_by_branch(
+    *, token: str, owner: str, repo: str, branch: str
+) -> dict[str, Any]:
     data = graphql(
         PR_BY_BRANCH_QUERY,
         {"owner": owner, "repo": repo, "branch": branch},
