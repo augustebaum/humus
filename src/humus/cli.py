@@ -347,7 +347,7 @@ def revision_history_body(
     rows.extend(
         (
             "",
-            f"<sub>{history_note}Maintained by humus from this "
+            f"<sub>{history_note}Maintained by [humus](https://github.com/augustebaum/humus) from this "
             "pull request's force-push history.</sub>",
         )
     )
