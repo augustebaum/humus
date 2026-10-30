@@ -3,8 +3,6 @@
 A comment on each GitHub pull request that records every version of the
 force-pushed branch, newest first:
 
-## Revision history
-
 | Version | Changes from previous version | Changes from branch base |
 | --- | --- | --- |
 | 3 (current) | `ef0152a3`..`7b0def91` | `zzzzzzzz`..`7b0def91` |
