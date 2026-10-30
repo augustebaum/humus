@@ -3,14 +3,13 @@
 A comment on each GitHub pull request that records every version of the
 force-pushed branch, newest first:
 
-```
-| Version | Changes from previous version | Submitted commit |
+## Revision history
+
+| Version | Changes from previous version | Changes from branch base |
 | --- | --- | --- |
-| 4 (current) | `ef0152a3`..`7b0def91` | `7b0def91` |
-| 3 | `c0ffee12`..`ef0152a3` | `ef0152a3` |
-| 2 | `deadbeef`..`c0ffee12` | `c0ffee12` |
-| 1 | Initial version | `deadbeef` |
-```
+| 3 (current) | `ef0152a3`..`7b0def91` | `zzzzzzzz`..`7b0def91` |
+| 2 | `c0ffee12`..`ef0152a3` | `zzzzzzzz`..`ef0152a3` |
+| 1 | Initial version | `zzzzzzzz`..`c0ffee12` |
 
 Run it after a force-push and it keeps one comment up to date on the pull
 request for the branch you pushed. It does not care what pushed: `git push
